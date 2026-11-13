@@ -1,0 +1,55 @@
+
+name: Build Inventory Manager
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    env:
+      VCPKG_ROOT: ${{ runner.temp }}\vcpkg
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Install vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg "$env:VCPKG_ROOT"
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+
+      - name: Install wxWidgets
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install wxwidgets:x64-windows
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Compile application
+        shell: pwsh
+        run: |
+          cmake --build build --config Release
+
+      - name: Package application
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package
+          Copy-Item "build/Release/InventoryManager.exe" "package/"
+          Copy-Item "$env:VCPKG_ROOT/installed/x64-windows/bin/*.dll" "package/" -ErrorAction Stop
+          Compress-Archive -Path "package/*" -DestinationPath "InventoryManager-Windows.zip"
+
+      - name: Upload application
+        uses: actions/upload-artifact@v4
+        with:
+          name: InventoryManager-Windows
+          path: InventoryManager-Windows.zip
+          if-no-files-found: error
